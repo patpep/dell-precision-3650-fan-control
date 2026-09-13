@@ -1,0 +1,8 @@
+[Unit]
+Description=Dell Precision 3650 CPU/GPU performance settings (EPP, PL1/PL2, MMIO lock, nvidia -pl)
+After=systemd-modules-load.service nvidia-persistenced.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cpu-perf.sh
+[Install]
+WantedBy=multi-user.target

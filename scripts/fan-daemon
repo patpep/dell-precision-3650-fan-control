@@ -1,0 +1,33 @@
+#!/bin/bash
+# fan-daemon — Dell Precision 3650 Tower: drive the 3 fans from CPU/GPU temperatures on top of the BIOS curve.
+# Default = auto (BIOS). Manual mode is GLOBAL on this EC (the BIOS releases the CPU fan too), so the daemon
+# only takes over when the GPU justifies it, escalates if the CPU warms up, and hands back as soon as possible.
+# Requires the patched dell-smm-hwmon (whitelist). MIT license.
+PERIOD=${PERIOD:-10}; CONFIRM=${CONFIRM:-3}                              # sample every 10 s, 3 samples before switching
+GPU_HI=${GPU_HI:-70}; GPU_LO=${GPU_LO:-60}                               # gpu mode: enter / leave
+CPU_HI=${CPU_HI:-88}; CPU_MID=${CPU_MID:-78}; CPU_LO=${CPU_LO:-75}       # hot mode: enter / enter while in gpu mode / leave
+A=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/FanCtrlOvrd/current_value
+H=$(dirname "$(grep -l dell_smm /sys/class/hwmon/hwmon*/name)")
+T=$(dirname "$(grep -l coretemp /sys/class/hwmon/hwmon*/name)")/temp1_input
+set_fans() { echo 1 > $H/pwm1_enable; echo $1 > $H/pwm1; echo $2 > $H/pwm2; echo $3 > $H/pwm3; }
+to_auto() { echo 2 > $H/pwm1_enable; }
+trap 'to_auto; echo "fan-daemon: stopping, fans handed back to BIOS"; exit 0' INT TERM
+mode=auto; n=0
+echo "fan-daemon: start (GPU ${GPU_HI}/${GPU_LO} C, CPU ${CPU_HI}/${CPU_MID}/${CPU_LO} C, period ${PERIOD}s)"
+while true; do
+  cpu=$(( $(cat $T)/1000 ))
+  gpu=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null || echo 0)
+  if [ "$(cat $A 2>/dev/null)" = Enabled ]; then sleep $PERIOD; continue; fi   # BIOS override active: nothing to do
+  want=auto
+  if   [ $cpu -ge $CPU_HI ]; then want=hot
+  elif [ $gpu -ge $GPU_HI ]; then want=gpu; [ $cpu -ge $CPU_MID ] && want=hot
+  fi
+  if [ $mode = hot ] && [ $want != hot ] && [ $cpu -ge $CPU_LO ]; then want=hot; fi     # hysteresis (hot)
+  if [ $mode = gpu ] && [ $want = auto ] && [ $gpu -ge $GPU_LO ]; then want=gpu; fi     # hysteresis (gpu)
+  if [ $want != $mode ]; then n=$((n+1)); else n=0; fi
+  if [ $n -ge $CONFIRM ]; then
+    case $want in hot) set_fans 255 255 255 ;; gpu) set_fans 128 255 255 ;; auto) to_auto ;; esac
+    echo "fan-daemon: $mode -> $want (CPU ${cpu} C, GPU ${gpu} C)"; mode=$want; n=0
+  fi
+  sleep $PERIOD
+done

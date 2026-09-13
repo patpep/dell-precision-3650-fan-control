@@ -1,0 +1,10 @@
+[Unit]
+Description=Dell Precision 3650 fan daemon (CPU/GPU temperatures -> fan levels)
+After=cpu-perf.service nvidia-persistenced.service
+[Service]
+ExecStart=/usr/local/sbin/fan-daemon
+ExecStopPost=/bin/bash -c 'echo 2 > $(dirname $(grep -l dell_smm /sys/class/hwmon/hwmon*/name))/pwm1_enable'
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

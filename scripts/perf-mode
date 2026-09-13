@@ -1,0 +1,38 @@
+#!/bin/bash
+# perf-mode — Dell Precision 3650 Tower: performance / fan switch (root required)
+#   perf-mode on              -> BIOS Fan Control Override (all fans 100 %) + PL2 140 W   (heavy CPU+GPU sessions)
+#   perf-mode off             -> override off, fans back to BIOS, PL2 115 W            (everyday)
+#   perf-mode fans C F T      -> manual levels cpu/front/top: 0 (min) 1 (idle) 2 (max), e.g. fans 1 2 2
+#   perf-mode fans auto       -> give all 3 fans back to the BIOS
+#   perf-mode status          -> current state
+# Requires the patched dell-smm-hwmon (whitelist) and dell-wmi-sysman. MIT license.
+A=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/FanCtrlOvrd/current_value
+R=/sys/class/powercap/intel-rapl:0
+H=$(dirname "$(grep -l dell_smm /sys/class/hwmon/hwmon*/name)")
+T=$(dirname "$(grep -l coretemp /sys/class/hwmon/hwmon*/name)")/temp1_input
+case "$1" in
+  on)
+    echo 140000000 > $R/constraint_1_power_limit_uw
+    echo Enabled > $A
+    echo "perf-mode ON: fans 100 %, PL2 140 W" ;;
+  off)
+    echo Disabled > $A
+    echo 2 > $H/pwm1_enable 2>/dev/null
+    echo 115000000 > $R/constraint_1_power_limit_uw
+    echo "perf-mode OFF: fans auto (BIOS), PL2 115 W" ;;
+  fans)
+    if [ "$2" = auto ]; then echo 2 > $H/pwm1_enable; echo "fans: auto (BIOS)"; exit 0; fi
+    [ $# -eq 4 ] || { echo "usage: perf-mode fans <cpu> <front> <top> (0|1|2) | fans auto" >&2; exit 1; }
+    for v in "$2" "$3" "$4"; do case "$v" in 0|1|2) ;; *) echo "invalid level: $v (0|1|2)" >&2; exit 1;; esac; done
+    map=(0 128 255)
+    echo 1 > $H/pwm1_enable
+    echo ${map[$2]} > $H/pwm1; echo ${map[$3]} > $H/pwm2; echo ${map[$4]} > $H/pwm3
+    echo "manual fans: cpu=$2 front=$3 top=$4  (the BIOS no longer manages ANY fan - 'perf-mode fans auto' to hand back)" ;;
+  status|"")
+    echo "override : $(cat $A)"
+    echo "PL1/PL2  : $(( $(cat $R/constraint_0_power_limit_uw)/1000000 )) W / $(( $(cat $R/constraint_1_power_limit_uw)/1000000 )) W"
+    echo "EPP      : $(cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference)"
+    echo "fans     : $(cat $H/fan1_input)/$(cat $H/fan2_input)/$(cat $H/fan3_input) RPM (cpu/front/top)"
+    echo "CPU      : $(( $(cat $T)/1000 )) C   GPU (temp, W, cap): $(nvidia-smi --query-gpu=temperature.gpu,power.draw,power.limit --format=csv,noheader 2>/dev/null)" ;;
+  *) echo "usage: perf-mode on|off|fans <cpu> <front> <top>|fans auto|status" >&2; exit 1 ;;
+esac
