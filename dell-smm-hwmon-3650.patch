@@ -1,23 +1,27 @@
 From: Patrick Pepin <patpep@me.com>
-Subject: [PATCH] hwmon: (dell-smm) Add Dell Precision 3650 Tower to fan control whitelist
+Subject: [PATCH v2] hwmon: (dell-smm) Add Dell Precision 3650 Tower to fan control whitelist
 
 On the Dell Precision 3650 Tower, the EC ignores fan speed writes unless
-automatic BIOS fan control is disabled first. The same SMM code pair as
-the OptiPlex 7000 (I8K_FAN_34A3_35A3) works on this machine through the
-WMI-SMM backend: after writing 1 to pwm1_enable, all three fans (CPU,
-front, top) accept the three fan states and report matching RPM.
+automatic BIOS fan control is disabled first. The I8K_FAN_30A3_31A3 SMM
+code pair works on this machine through the WMI-SMM backend: after
+writing 1 to pwm1_enable, all three fans (CPU, front, top) accept the
+three fan states and report matching RPM, and writing 2 hands control
+back to the BIOS. I8K_FAN_34A3_35A3 was tested as well and also works;
+I8K_FAN_30A3_31A3 is used since it matches recent OEM software.
 
 Tested on BIOS 1.48.0 with kernels 7.0.0-30 and 7.0.0-31 (Ubuntu 26.04).
 
-Tested-by: Patrick Pepin <patpep@me.com>
 Signed-off-by: Patrick Pepin <patpep@me.com>
 ---
+v2: use I8K_FAN_30A3_31A3 instead of I8K_FAN_34A3_35A3 as suggested by
+    Armin Wolf (both pairs tested working on this machine).
+
  drivers/hwmon/dell-smm-hwmon.c | 8 ++++++++
  1 file changed, 8 insertions(+)
 
 --- a/drivers/hwmon/dell-smm-hwmon.c
 +++ b/drivers/hwmon/dell-smm-hwmon.c
-@@ -1638,6 +1638,14 @@ static const struct dmi_system_id i8k_whitelist_fan_control[] __initconst = {
+@@ -1639,6 +1639,14 @@ static const struct dmi_system_id i8k_whitelist_fan_control[] __initconst = {
  		},
  		.driver_data = (void *)&i8k_fan_control_data[I8K_FAN_34A3_35A3],
  	},
@@ -27,8 +31,8 @@ Signed-off-by: Patrick Pepin <patpep@me.com>
 +			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
 +			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Precision 3650 Tower"),
 +		},
-+		.driver_data = (void *)&i8k_fan_control_data[I8K_FAN_34A3_35A3],
++		.driver_data = (void *)&i8k_fan_control_data[I8K_FAN_30A3_31A3],
 +	},
  	{
- 		.ident = "Dell XPS 9315",
+ 		.ident = "Dell Optiplex 7090",
  		.matches = {

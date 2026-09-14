@@ -1,6 +1,8 @@
 # Software fan control on the Dell Precision 3650 Tower (Linux)
 
-**TL;DR** — The Dell Precision 3650 Tower is not in the `dell-smm-hwmon` fan-control whitelist, so the EC ignores every `pwm` write and the BIOS keeps full control of the fans. Adding **one DMI entry** (8 lines) with the same SMM code pair as the OptiPlex 7000 (`0x34a3` / `0x35a3`) unlocks **manual control of all three fans** (CPU, front, top), three levels each, with real tachometer feedback. Tested on BIOS 1.48.0, Ubuntu 26.04.1, kernels 7.0.0-30 and 7.0.0-31, using the driver's **WMI-SMM backend**.
+**TL;DR** — The Dell Precision 3650 Tower is not in the `dell-smm-hwmon` fan-control whitelist, so the EC ignores every `pwm` write and the BIOS keeps full control of the fans. Adding **one DMI entry** (8 lines) with a known SMM code pair unlocks **manual control of all three fans** (CPU, front, top), three levels each, with real tachometer feedback. Both known pairs work on this machine (`0x30a3/0x31a3` and `0x34a3/0x35a3`); the patch uses `0x30a3/0x31a3`, which matches recent Dell OEM software. Tested on BIOS 1.48.0, Ubuntu 26.04.1, kernels 7.0.0-30 and 7.0.0-31, using the driver's **WMI-SMM backend**.
+
+**Upstream status:** patch submitted to `linux-hwmon` — [v1](https://lore.kernel.org/linux-hwmon/20260913112925.11393-1-patpep@me.com/) (Acked-by Pali Rohár, the driver maintainer), [v2](https://lore.kernel.org/linux-hwmon/20260914080955.87925-1-patpep@me.com/) switching to `0x30a3/0x31a3` at Armin Wolf's request. Until it lands in your distro's kernel, the DKMS recipe below does the job.
 
 This repo contains the patch, a DKMS recipe so the module survives kernel updates, the measured fan tables, the EC behaviours we mapped, and two helper scripts (`perf-mode`, `fan-daemon`).
 
@@ -29,7 +31,7 @@ Root cause: the machine is not in `i8k_whitelist_fan_control[]` in `drivers/hwmo
 
 ## The fix
 
-Add the Precision 3650 Tower to the whitelist with `I8K_FAN_34A3_35A3` — the same pair validated on the OptiPlex 7000 (12th gen, same WMI-SMM family). See [`dell-smm-hwmon-3650.patch`](dell-smm-hwmon-3650.patch):
+Add the Precision 3650 Tower to the whitelist. Both known code pairs were tested and work (`I8K_FAN_34A3_35A3`, the OptiPlex 7000 pair, and `I8K_FAN_30A3_31A3`); the patch uses `I8K_FAN_30A3_31A3` since it is what recent OEM software uses. See [`dell-smm-hwmon-3650.patch`](dell-smm-hwmon-3650.patch):
 
 ```c
 	{
@@ -38,7 +40,7 @@ Add the Precision 3650 Tower to the whitelist with `I8K_FAN_34A3_35A3` — the s
 			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
 			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Precision 3650 Tower"),
 		},
-		.driver_data = (void *)&i8k_fan_control_data[I8K_FAN_34A3_35A3],
+		.driver_data = (void *)&i8k_fan_control_data[I8K_FAN_30A3_31A3],
 	},
 ```
 
@@ -72,7 +74,7 @@ Gotcha we hit: if a newer kernel was already installed but not yet booted when y
 
 ### Fan levels (measured, `fanX_input` = tachometer RPM)
 
-The EC offers **three levels per fan** — there is no continuous 0–100 %. Level 1 is essentially the idle speed.
+The EC offers **three levels per fan** — there is no continuous 0–100 %. Level 1 is essentially the idle speed. Identical results with both code pairs.
 
 | hwmon | Fan | Level 0 (`0`) | Level 1 (`128`) | Level 2 (`255`) | EC target at level 2 | Noise |
 |---|---|---|---|---|---|---|
@@ -80,7 +82,7 @@ The EC offers **three levels per fan** — there is no continuous 0–100 %. Lev
 | `pwm2`/`fan2` | Front Delta 120×38 (HHCM0) | 584 | ~1 000 | **3 270** | 3 300 | loud (industrial fan) |
 | `pwm3`/`fan3` | Top Arctic P9 Max | 774 | 891 | **3 200** | 3 200 | quiet |
 
-- Each fan reaches its target in 20–30 s and holds it within ±10 RPM.
+- Each fan reaches its target in 20–40 s (the CPU blower is the slowest) and holds it within ±10 RPM.
 - `pwmX` reads back the level the EC has *accepted* (it shows `255` a few seconds after the write); `fanX_target` shows the nominal RPM of the current level.
 - Manual mode is **global**: `echo 1 > pwm1_enable` makes the BIOS release **all** fans, including the CPU fan. Fans keep their last commanded level — always write all three. `echo 2 > pwm1_enable` returns everything to the BIOS curve.
 
@@ -113,14 +115,15 @@ Example units are in [`scripts/systemd/`](scripts/systemd/).
 ## Status
 
 - [x] Patch tested on Precision 3650 Tower (BIOS 1.48.0), kernels 7.0.0-30 and 7.0.0-31, DKMS, survives reboot and kernel update.
-- [ ] Patch submitted to `linux-hwmon` (planned — this repo is the reference).
+- [x] Patch submitted to `linux-hwmon`: [v1 (2026-09-13, Acked-by Pali Rohár)](https://lore.kernel.org/linux-hwmon/20260913112925.11393-1-patpep@me.com/), [v2 (2026-09-14, `0x30a3/0x31a3`)](https://lore.kernel.org/linux-hwmon/20260914080955.87925-1-patpep@me.com/).
+- [ ] Merged upstream.
 - [ ] Reports from other 3650 owners / other BIOS versions welcome (open an issue with `dmidecode -s system-product-name`, BIOS version, kernel, and the `dmesg` line).
 
-Not tested: Precision 3630 / 3640 / 3660 / 3680, OptiPlex 7080 / 7090. The OptiPlex 7090 reportedly did **not** work with the same trick; each EC is its own case.
+Not tested: Precision 3630 / 3640 / 3660 / 3680, OptiPlex 7080. The OptiPlex 7090 has since been whitelisted in `hwmon-next` as well.
 
 ## Credits
 
-- Armin Wolf's OptiPlex 7000 whitelist patch and the WMI-SMM backend in `dell-smm-hwmon`, which made this possible.
+- Pali Rohár (driver maintainer) and Armin Wolf (WMI-SMM backend, OptiPlex 7000 entry) for the quick review.
 - The Linux `dell-smm-hwmon` documentation (https://docs.kernel.org/hwmon/dell-smm-hwmon.html).
 - [horshack-dpreview/setPL](https://github.com/horshack-dpreview/setPL) for the MSR/MMIO power-limit tool.
 
