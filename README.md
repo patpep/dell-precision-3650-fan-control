@@ -2,7 +2,7 @@
 
 **TL;DR** — The Dell Precision 3650 Tower is not in the `dell-smm-hwmon` fan-control whitelist, so the EC ignores every `pwm` write and the BIOS keeps full control of the fans. Adding **one DMI entry** (8 lines) with a known SMM code pair unlocks **manual control of all three fans** (CPU, front, top), three levels each, with real tachometer feedback. Both known pairs work on this machine (`0x30a3/0x31a3` and `0x34a3/0x35a3`); the patch uses `0x30a3/0x31a3`, which matches recent Dell OEM software. Tested on BIOS 1.48.0, Ubuntu 26.04.1, kernels 7.0.0-30 and 7.0.0-31, using the driver's **WMI-SMM backend**.
 
-**Upstream status:** patch submitted to `linux-hwmon` — [v1](https://lore.kernel.org/linux-hwmon/20260913112925.11393-1-patpep@me.com/) (Acked-by Pali Rohár, the driver maintainer), [v2](https://lore.kernel.org/linux-hwmon/20260914080955.87925-1-patpep@me.com/) switching to `0x30a3/0x31a3` at Armin Wolf's request. Until it lands in your distro's kernel, the DKMS recipe below does the job.
+**Upstream status: merged.** The patch was applied to `hwmon-next` by Guenter Roeck on 2026-09-16 ([thread on lore](https://lore.kernel.org/linux-hwmon/20260914080955.87925-1-patpep@me.com/): v1 Acked-by Pali Rohár, v2 with `0x30a3/0x31a3` at Armin Wolf's request, then "Applied"). It will ship in the next kernel release and reach distributions from there. Until your kernel has it, the DKMS recipe below does the job.
 
 This repo contains the patch, a DKMS recipe so the module survives kernel updates, the measured fan tables, the EC behaviours we mapped, and two helper scripts (`perf-mode`, `fan-daemon`).
 
@@ -116,14 +116,15 @@ Example units are in [`scripts/systemd/`](scripts/systemd/).
 
 - [x] Patch tested on Precision 3650 Tower (BIOS 1.48.0), kernels 7.0.0-30 and 7.0.0-31, DKMS, survives reboot and kernel update.
 - [x] Patch submitted to `linux-hwmon`: [v1 (2026-09-13, Acked-by Pali Rohár)](https://lore.kernel.org/linux-hwmon/20260913112925.11393-1-patpep@me.com/), [v2 (2026-09-14, `0x30a3/0x31a3`)](https://lore.kernel.org/linux-hwmon/20260914080955.87925-1-patpep@me.com/).
-- [ ] Merged upstream.
+- [x] **Merged upstream** — applied to `hwmon-next` on 2026-09-16 ([Guenter Roeck's reply](https://lore.kernel.org/linux-hwmon/4e5f8714-4257-484f-8f8c-0fc8033ecab6@roeck-us.net/)); expected in the next mainline release.
+- [ ] Landed in a distribution kernel (then the DKMS module can be removed: `dkms remove dell-smm-hwmon-3650/1.0 --all`).
 - [ ] Reports from other 3650 owners / other BIOS versions welcome (open an issue with `dmidecode -s system-product-name`, BIOS version, kernel, and the `dmesg` line).
 
 Not tested: Precision 3630 / 3640 / 3660 / 3680, OptiPlex 7080. The OptiPlex 7090 has since been whitelisted in `hwmon-next` as well.
 
 ## Credits
 
-- Pali Rohár (driver maintainer) and Armin Wolf (WMI-SMM backend, OptiPlex 7000 entry) for the quick review.
+- Pali Rohár (driver maintainer), Armin Wolf (WMI-SMM backend, OptiPlex 7000 entry) and Guenter Roeck (hwmon maintainer) for the quick review and merge.
 - The Linux `dell-smm-hwmon` documentation (https://docs.kernel.org/hwmon/dell-smm-hwmon.html).
 - [horshack-dpreview/setPL](https://github.com/horshack-dpreview/setPL) for the MSR/MMIO power-limit tool.
 
